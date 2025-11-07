@@ -509,3 +509,254 @@ def get_mass_based_edges(r, m, bin_mass=1.0, max_mass=None):
             radius_edges[i] = r_sorted[idx]
     
     return radius_edges
+
+def plot_particles(snap, snap_label, trace_stars=False,xlim=None, ylim=None, figsize=None,trace_bound=False,color_by_density=False, 
+                   ax=None, 
+                   cmap='viridis', 
+                   show_colorbar=True,
+                   clim=None):
+    
+    '''
+    Simple plotting of particles
+    '''
+    # Create axes if not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    
+    # Track scatter objects for colorbar
+    scatter_objects = []
+        
+    if trace_stars:
+        # Plot star 1 and star 2 separately
+        for star_id, star_name in [(1, "S1"), (2, "S2")]:
+            mask = snap['ro_ids'] == star_id
+            if color_by_density:
+                sc = ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask], 
+                                c=np.log10(snap['ro_rho'])[mask], cmap=cmap,
+                                label=f"{snap_label}, {star_name}", s=0.5,alpha=0.8)
+                scatter_objects.append(sc)
+            else:
+                ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask], 
+                            label=f"{snap_label}, {star_name}", s=0.5,alpha=0.8)
+        
+    elif trace_bound:
+        # Plot bound and unbound particles separately
+        _, M_enc = mass_quantities(snap['ro_m'])
+        e = energy(snap['ro_v'], snap['ro_u'], snap['ro_r'], M_enc)
+        bn, un = bound_unbound(snap['ro_r'], e)
+            
+        for mask, particle_type in [(bn, "bn"), (un, "un")]:
+            if color_by_density:
+                sc = ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask], 
+                                c=np.log10(snap['ro_rho'])[mask], cmap=cmap,
+                                label=f"{snap_label}, {particle_type}", s=0.5, alpha=0.8)
+                scatter_objects.append(sc)
+            else:
+                ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask][mask], 
+                            label=f"{snap_label}, {particle_type}", s=0.5,alpha=0.8)
+        
+    else:
+        # Plot all particles together
+        if color_by_density:
+            sc = ax.scatter(snap['ro_x'], snap['ro_y'], 
+                            c=np.log10(snap['ro_rho']), cmap=cmap,
+                            label=snap_label, s=0.5,alpha=0.8)
+            scatter_objects.append(sc)
+        else:
+            ax.scatter(snap['ro_x'], snap['ro_y'], label=snap_label, s=0.5,alpha=0.8)
+    
+    if xlim:
+        ax.set_xlim(xlim)
+    if ylim:
+        ax.set_ylim(ylim)
+    
+    ax.set_xlabel(r'X [$\mathrm{R}_\odot$]')
+    ax.set_ylabel(r'Y [$\mathrm{R}_\odot$]')
+    ax.legend()
+    
+    # Add colorbar if requested and we have scatter objects
+    if color_by_density and show_colorbar and scatter_objects:
+        cbar = plt.colorbar(scatter_objects[-1], ax=ax)
+        cbar.set_label(r'Density [g / $\mathrm{cm}^3$]')
+    
+    if color_by_density and clim and scatter_objects:
+        for sc in scatter_objects:
+            sc.set_clim(clim)
+    
+    return ax
+
+
+####### Experimental! Or just not that useful... ########
+
+def plot_particles_hist2d(snap, snap_label, trace_stars=False, xlim=None, ylim=None, figsize=None,
+                   trace_bound=False, color_by_density=False, 
+                   ax=None, 
+                   cmap='viridis', 
+                   show_colorbar=True,
+                   clim=None,
+                   bins=100,
+                   use_histogram=True,
+                   norm='log'):
+    
+    '''
+    Simple plotting of particles
+    
+    Parameters:
+    -----------
+    bins: int or [int, int], number of bins for 2D histogram (default: 100)
+    use_histogram: if True, use 2D histogram; if False, use scatter plot
+    color_by_density: if True with histogram, shows column density (sum of densities)
+    norm: 'log' or 'linear' for histogram color scaling
+    '''
+    import matplotlib.colors as mcolors
+    from scipy.stats import binned_statistic_2d
+    
+    # Create axes if not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    
+    # Track image/scatter objects for colorbar
+    plot_objects = []
+    
+    # Determine bin ranges if limits are provided
+    if xlim and ylim:
+        bin_range = [[xlim[0], xlim[1]], [ylim[0], ylim[1]]]
+    else:
+        bin_range = None
+    
+    # Set up normalization
+    if norm == 'log':
+        norm_obj = mcolors.LogNorm()
+    else:
+        norm_obj = None
+        
+    if trace_stars:
+        # Plot star 1 and star 2 separately
+        for star_id, star_name in [(1, "S1"), (2, "S2")]:
+            mask = snap['ro_ids'] == star_id
+            
+            if use_histogram:
+                if color_by_density:
+                    # Sum densities in each bin (column density)
+                    ret = binned_statistic_2d(snap['ro_x'][mask], snap['ro_y'][mask], 
+                                            snap['ro_rho'][mask], 
+                                            statistic='sum', bins=bins, range=bin_range)
+                    
+                    # Replace zeros/NaNs with small value for log plotting
+                    column_density = ret.statistic.T
+                    column_density[column_density == 0] = np.nan
+                    
+                    im = ax.imshow(column_density, 
+                                 extent=[ret.x_edge[0], ret.x_edge[-1], ret.y_edge[0], ret.y_edge[-1]],
+                                 origin='lower', cmap=cmap, aspect='auto', norm=norm_obj,
+                                 interpolation='nearest')
+                    plot_objects.append(im)
+                else:
+                    # Just count particles
+                    h = ax.hist2d(snap['ro_x'][mask], snap['ro_y'][mask], 
+                                 bins=bins, cmap=cmap, norm=norm_obj,
+                                 range=bin_range, label=f"{snap_label}, {star_name}")
+                    plot_objects.append(h[3])
+            else:
+                if color_by_density:
+                    sc = ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask], 
+                                   c=np.log10(snap['ro_rho'][mask]), cmap=cmap,
+                                   label=f"{snap_label}, {star_name}", s=0.5, alpha=0.8)
+                    plot_objects.append(sc)
+                else:
+                    ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask], 
+                              label=f"{snap_label}, {star_name}", s=0.5, alpha=0.8)
+        
+    elif trace_bound:
+        # Plot bound and unbound particles separately
+        _, M_enc = mass_quantities(snap['ro_m'])
+        e = energy(snap['ro_v'], snap['ro_u'], snap['ro_r'], M_enc)
+        bn, un = bound_unbound(snap['ro_r'], e)
+            
+        for mask, particle_type in [(bn, "bn"), (un, "un")]:
+            if use_histogram:
+                if color_by_density:
+                    ret = binned_statistic_2d(snap['ro_x'][mask], snap['ro_y'][mask], 
+                                            snap['ro_rho'][mask], 
+                                            statistic='sum', bins=bins, range=bin_range)
+                    
+                    column_density = ret.statistic.T
+                    column_density[column_density == 0] = np.nan
+                    
+                    im = ax.imshow(column_density, 
+                                 extent=[ret.x_edge[0], ret.x_edge[-1], ret.y_edge[0], ret.y_edge[-1]],
+                                 origin='lower', cmap=cmap, aspect='auto', norm=norm_obj,
+                                 interpolation='nearest')
+                    plot_objects.append(im)
+                else:
+                    h = ax.hist2d(snap['ro_x'][mask], snap['ro_y'][mask], 
+                                 bins=bins, cmap=cmap, norm=norm_obj,
+                                 range=bin_range, label=f"{snap_label}, {particle_type}")
+                    plot_objects.append(h[3])
+            else:
+                if color_by_density:
+                    sc = ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask], 
+                                   c=np.log10(snap['ro_rho'][mask]), cmap=cmap,
+                                   label=f"{snap_label}, {particle_type}", s=0.5, alpha=0.8)
+                    plot_objects.append(sc)
+                else:
+                    ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask], 
+                              label=f"{snap_label}, {particle_type}", s=0.5, alpha=0.8)
+        
+    else:
+        # Plot all particles together
+        if use_histogram:
+            if color_by_density:
+                # Sum densities in each bin (column density)
+                ret = binned_statistic_2d(snap['ro_x'], snap['ro_y'], 
+                                        snap['ro_rho'], 
+                                        statistic='sum', bins=bins, range=bin_range)
+                
+                column_density = ret.statistic.T
+                column_density[column_density == 0] = np.nan
+                
+                im = ax.imshow(column_density, 
+                             extent=[ret.x_edge[0], ret.x_edge[-1], ret.y_edge[0], ret.y_edge[-1]],
+                             origin='lower', cmap=cmap, aspect='auto', norm=norm_obj,
+                             interpolation='nearest')
+                plot_objects.append(im)
+            else:
+                h = ax.hist2d(snap['ro_x'], snap['ro_y'], 
+                             bins=bins, cmap=cmap, norm=norm_obj,
+                             range=bin_range, label=snap_label)
+                plot_objects.append(h[3])
+        else:
+            if color_by_density:
+                sc = ax.scatter(snap['ro_x'], snap['ro_y'], 
+                               c=np.log10(snap['ro_rho']), cmap=cmap,
+                               label=snap_label, s=0.5, alpha=0.8)
+                plot_objects.append(sc)
+            else:
+                ax.scatter(snap['ro_x'], snap['ro_y'], label=snap_label, s=0.5, alpha=0.8)
+    
+    if xlim:
+        ax.set_xlim(xlim)
+    if ylim:
+        ax.set_ylim(ylim)
+    
+    ax.set_xlabel(r'X [$\mathrm{R}_\odot$]')
+    ax.set_ylabel(r'Y [$\mathrm{R}_\odot$]')
+    
+    if not use_histogram:
+        ax.legend()
+    
+    # Add colorbar if requested and we have plot objects
+    if show_colorbar and plot_objects:
+        cbar = plt.colorbar(plot_objects[-1], ax=ax)
+        if use_histogram and color_by_density:
+            cbar.set_label(r'Column Density [g / $\mathrm{cm}^2$]')
+        elif use_histogram:
+            cbar.set_label('Particle Count')
+        elif color_by_density:
+            cbar.set_label(r'log$_{10}$(Density [g / $\mathrm{cm}^3$])')
+    
+    if clim and plot_objects:
+        for obj in plot_objects:
+            obj.set_clim(clim)
+    
+    return ax
