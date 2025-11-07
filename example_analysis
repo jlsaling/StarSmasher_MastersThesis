@@ -1,0 +1,55 @@
+######################### Import modules etc. #################################
+
+import numpy as np
+import matplotlib.pyplot as plt
+from plot_settings import *
+from useful_functions import *
+from astropy import constants as cons
+from astropy import units
+
+r_sun = 69599000000                                    # solar radius in cm
+m_sun = 1.989e33                                       # solar mass in g
+G = 6.67e-8   
+
+################################ Load data #####################################
+
+fields = ['x', 'y', 'z', 'vx','vy','vz','rho', 'm', 'u', 'h','temp', 'u_dot']
+
+snap3 =  r"\\wsl.localhost\Ubuntu-24.04\home\jsaling\HELIX_FILE_TRANSFER\42-MS-42-MS_b3\out5878.sph.ascii"
+
+d_5878 = re_center_and_order(trace_stars=True, npart_1=89976,**load_snap(snap3, fields))
+
+######################## Plot a temperature profile #############################
+
+pagewidth, columnwidth = set_plot_defaults()
+fig, ax = plt.subplots(figsize=(8, 6))
+plt.rc('axes', prop_cycle=my_cycler)
+
+#snaps = [d_0479, d_0480, d_0481, d_0482]
+#snap_labels = ['Out0479', 'Out0480', 'Out0481', 'Out0482']
+
+snaps = [d_5878]
+snap_labels = ['Out5878']
+
+# scatter plot of particles
+ax = plot_radial_profile('ro_temp',snaps, 
+                          xlim=(0, 100),
+                          ylim=(1e5,1e9),
+                          log=True,
+                          trace_stars=False,
+                          color_by_mass=True, 
+                          cmap='viridis',
+                          ax=ax,
+                          snapshot_names=snap_labels)
+
+# plot the average profile
+ax = plot_radial_profile_average('ro_temp',snaps,
+                          mass_binning=True,
+                          xlim=(0, 100),
+                          ylim=(1e5,1e9),
+                          log=True,
+                          trace_bound=False,
+                          ax=ax,
+                          snapshot_names=snap_labels)
+
+ax.set_title(r"Star 1: 42 $\mathrm{M}_\odot$, Star 2: 42 $\mathrm{M}_\odot$, b = 3")
