@@ -1,3 +1,10 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from astropy import constants as cons
+from astropy import units
+
+V_sun = 436.5 # km/s 
+
 def load_snap(filename, fields=None):
     """
     Load snapshot data from a file.
@@ -12,19 +19,15 @@ def load_snap(filename, fields=None):
     
     Returns
     -------
-    dict or tuple
-        If multiple fields requested: dictionary with field names as keys and arrays as values
-        If single field requested: just the array for that field
+    dict or array
+        If multiple fields requested: dictionary with field names as keys, arrays as values, and 'time' key
+        If single field requested: just the array for that field (time not included)
     
     Examples
     --------
     >>> data = load_snap('snap.txt', ['x', 'y', 'z', 'm'])
     >>> x, y, z, m = data['x'], data['y'], data['z'], data['m']
-    
-    >>> data = load_snap('snap.txt', ['rho', 'u'])
-    >>> rho = data['rho']
-    
-    >>> x = load_snap('snap.txt', ['x'])  # Returns just the array
+    >>> time = data['time']
     """
     
     # Define all available fields and their column indices
@@ -49,11 +52,23 @@ def load_snap(filename, fields=None):
     # Load the data
     data = np.genfromtxt(filename, usecols=cols, unpack=True)
     
-    # Handle single field case (genfromtxt returns 1D array, not tuple)
+    # Extract timestamp TODO actually return it too
+    time = None
+    with open(filename, "r") as f:
+        for line in f:
+            if line.startswith("# time:"):
+                # next line has the values
+                next_line = next(f).strip("# \n")
+                vals = next_line.split()
+                time = float(vals[0])  # snapshot time
+            if not line.startswith("#"):
+                # first non-header line marks end of header
+                break
+    
+    # Handle single field case
     if len(fields) == 1:
         return data
     
-    # Return dictionary mapping field names to arrays
     return dict(zip(fields, data))
 
 def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
@@ -69,7 +84,7 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
         Optional keys (will be reordered if present):
         - vx, vy, vz : numpy.ndarray - Velocity of the particles
         - m : numpy.ndarray - Mass of the particles
-        - u : numpy.ndarray - Specific internal energy
+        - u : numpy.ndarray - Specific internal energy 
         - rho : numpy.ndarray - Density of the particles
         - mu, h, u_dot, temp : numpy.ndarray - Any other fields
         ## TODO: Implement flag 'trace_stars' that shows which particles originally belonged to which star, if set true then
@@ -127,12 +142,15 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
         'ro_x': nw_x[indx],
         'ro_y': nw_y[indx],
         'ro_z': nw_z[indx],
+        'ro_vx': nw_vx[indx]*436.5,
+        'ro_vy': nw_vy[indx]*436.5,
+        'ro_vz': nw_vz[indx]*436.5,
         'ro_r': r[indx],
-        'ro_v': v[indx]
+        'ro_v': v[indx]*436.5
     }
     
     # Reorder all other fields
-    skip_fields = {'x', 'y', 'z'}  # Already processed
+    skip_fields = {'x', 'y', 'z', 'vx', 'vy', 'vz'}  # Already processed
     for key, value in kwargs.items():
         if key not in skip_fields:
             result[f'ro_{key}'] = value[indx]
@@ -170,7 +188,7 @@ def mass_quantities(m):
 
 def energy(v,u,r,m_enc):
     """
-    Computation of the specific total energy of each particle.
+    Computation of the specific total energy of each particle. EXPECTS V IN KM / S NOW, NOT IN CODE UNITS !!!
 
     Parameters
     ----------
@@ -195,7 +213,7 @@ def energy(v,u,r,m_enc):
 
     G = ((cons.G)/((units.R_sun.to(units.m)**3))*(units.M_sun.to(units.kg))*((1.8845e-2*86400)**2)).value
     
-    e = v**2 + u - G*m_enc*(1/r)
+    e = (v/436.5)**2 + u - G*m_enc*(1/r) # EXPECTS V IN KM / S NOW, NOT IN CODE UNITS !!!
     
     return e
 
@@ -291,13 +309,19 @@ def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None,
     
     # Dictionary for default y-axis labels
     default_labels = {
-        'ro_rho': r"Density [g / $\mathrm{cm}^3$]",
-        'ro_u': r"Specific Internal Energy [erg / g]",
-        'ro_h': r"Specific Enthalpy [erg / g]",
-        'ro_temp': r"Temperature [K]",
-        'ro_udot': r"Specific Internal Energy Change du/dt [erg / (g s)]"
+        'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
+        'ro_u': r"Specific Internal Energy $u$ [erg / g]",
+        'ro_h': r"Specific Enthalpy $h$ [erg / g]",
+        'ro_temp': r"Temperature $T$ [K]",
+        'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
+        'ro_v': r"Velocity $v$ [km / s]",
+        'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
+        'v_radial': r"Radial Velocity $v_r$ [km / s]",
+        'v_vertical': r"Vertical Velocity $v_r$ [km / s]",
+        'R_cylindrical': r'Cylindrical Radius [$\mathrm{R}_\odot$]'
     }
     
+
     # Create axes if not provided
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -313,7 +337,6 @@ def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None,
          
         if mass_binning:
 
-            # Then use with your existing function:
             radius_edges = get_mass_based_edges(snap['ro_r'], snap['ro_m'], bin_mass)
             bin_edges = radius_edges
             
@@ -323,7 +346,7 @@ def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None,
                 mask = snap['ro_ids'] == star_id
                 X, Y = bin_and_avg(snap['ro_r'][mask],snap[y_ax_quant][mask], bin_edges)
                 
-                ax.plot(X, Y, label=f"{snap_label}, {star_name}", color='#009E73', linewidth=2)
+                ax.plot(X, Y, label=f"{snap_label}, {star_name}", linewidth=2)
         
         elif trace_bound:
             # Plot bound and unbound particles separately
@@ -333,11 +356,11 @@ def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None,
             
             for mask, particle_type in [(bn, "bn"), (un, "un")]:
                 X, Y = bin_and_avg(snap['ro_r'][mask],snap[y_ax_quant][mask], bin_edges)
-                ax.plot(X,Y, label=f"{snap_label}, {particle_type}", color='#009E73', linewidth=2)
+                ax.plot(X,Y, label=f"{snap_label}, {particle_type}", linewidth=2)
         
         else:
             X, Y = bin_and_avg(snap['ro_r'],snap[y_ax_quant], bin_edges)
-            ax.plot(X, Y, label=snap_label, color='#009E73', linewidth=2)
+            ax.plot(X, Y, label=snap_label, linewidth=2) #, color='#009E73'
     
     if xlim:
         ax.set_xlim(xlim)
@@ -359,6 +382,7 @@ def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None,
     ax.legend()
     
     return ax
+
 def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars=False, 
                        trace_bound=False, log=False, ax=None, snapshot_names=None, 
                        figsize=None, ylabel=None, color_by_mass=False, cmap='viridis', 
@@ -552,7 +576,7 @@ def plot_particles(snap, snap_label, trace_stars=False,xlim=None, ylim=None, fig
                                 label=f"{snap_label}, {particle_type}", s=0.5, alpha=0.8)
                 scatter_objects.append(sc)
             else:
-                ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask][mask], 
+                ax.scatter(snap['ro_x'][mask], snap['ro_y'][mask], 
                             label=f"{snap_label}, {particle_type}", s=0.5,alpha=0.8)
         
     else:
@@ -760,3 +784,93 @@ def plot_particles_hist2d(snap, snap_label, trace_stars=False, xlim=None, ylim=N
             obj.set_clim(clim)
     
     return ax
+
+def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=None, figsize=None):
+    
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    
+    for i, snap in enumerate(snapshots):
+        # Use provided name or default to enumeration
+        snap_label = snapshot_names[i] if snapshot_names else f"snap_{i}"
+        
+        Mt, M_enc = mass_quantities(snap['ro_m'])
+        e = energy(snap['ro_v'], snap['ro_u'], snap['ro_r'], M_enc)
+        bn, un = bound_unbound(snap['ro_r'], e)
+            
+        for mask, particle_type in [(bn, "bn"), (un, "un")]:
+            ax.plot(snap['ro_r'][mask],np.cumsum(snap['ro_m'][mask]), label=f"{snap_label}, {particle_type}", linewidth=2)
+            percentage = np.sum(snap['ro_m'][mask])*100/Mt
+            print(f'Percentage {particle_type} for {snap_label}: {percentage}')
+            
+            
+    if xlim:
+        ax.set_xlim(xlim)
+    if ylim:
+        ax.set_ylim(ylim)
+    
+    ax.set_xlabel(r'X [$\mathrm{R}_\odot$]')
+    ax.set_ylabel(r'Enclosed Mass [$\mathrm{M}_\odot$]')
+    ax.legend()
+            
+    return ax
+
+def get_vel_comp(snap):
+    '''
+    Function that 
+    A) Calculates the total angular momentum of the collision remnant
+    B) Obtains the rotation axis from this by normalizing L / |L|
+    C) Calculates the velocity components (radial, azimuthal, vertical)
+
+
+    Example usage:  data = re_center_and_order(trace_stars=True, npart_1=99954,**load_snap(snap, fields))
+                    data = get_vel_comp(data)
+    '''
+    
+    # Step A: Calculate total angular momentum
+    L_x = np.sum(snap['ro_m'] * (snap['ro_y']*snap['ro_vz'] - snap['ro_z']*snap['ro_vy']))
+    L_y = np.sum(snap['ro_m'] * (snap['ro_z']*snap['ro_vx'] - snap['ro_x']*snap['ro_vz']))
+    L_z = np.sum(snap['ro_m'] * (snap['ro_x']*snap['ro_vy'] - snap['ro_y']*snap['ro_vx']))
+    
+    L = np.array([L_x, L_y, L_z])
+    
+    # Step B: Normalize to get rotation axis unit vector
+    L_mag = np.sqrt(L_x**2 + L_y**2 + L_z**2)
+    L_unit = L / L_mag  # Direction of the rotation axis
+    
+    # Step C: Calculate velocity components for all particles (vectorized)
+    
+    # Stack position and velocity vectors (N x 3 arrays)
+    positions = np.column_stack([snap['ro_x'], snap['ro_y'], snap['ro_z']])
+    velocities = np.column_stack([snap['ro_vx'], snap['ro_vy'], snap['ro_vz']])
+    
+    # Component of position parallel to rotation axis (for all particles at once)
+    r_parallel_mag = np.dot(positions, L_unit)  # (N,) array
+    r_parallel = np.outer(r_parallel_mag, L_unit)  # (N, 3) array
+    
+    # Perpendicular distance vector from rotation axis
+    r_perp = positions - r_parallel  # (N, 3)
+    R_perp = np.linalg.norm(r_perp, axis=1)  # (N,) cylindrical radius
+    
+    # Radial unit vectors (avoiding division by zero)
+    r_hat = np.zeros_like(r_perp)
+    mask = R_perp > 1e-10  # Particles not on axis
+    r_hat[mask] = r_perp[mask] / R_perp[mask, np.newaxis]
+    
+    # Azimuthal unit vectors (phi_hat = L_unit x r_hat)
+    phi_hat = np.cross(L_unit, r_hat)
+    
+    # Project velocities onto the unit vectors (vectorized dot product)
+    v_radial = np.sum(velocities * r_hat, axis=1)
+    v_azimuthal = np.sum(velocities * phi_hat, axis=1)
+    v_vertical = np.dot(velocities, L_unit)
+    
+    # Store results in the snap dictionary
+    snap['L_total'] = L
+    snap['L_unit'] = L_unit
+    snap['v_radial'] = v_radial
+    snap['v_azimuthal'] = v_azimuthal
+    snap['v_vertical'] = v_vertical
+    snap['R_cylindrical'] = R_perp
+    
+    return snap
