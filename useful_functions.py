@@ -28,6 +28,10 @@ def load_snap(filename, fields=None):
     >>> data = load_snap('snap.txt', ['x', 'y', 'z', 'm'])
     >>> x, y, z, m = data['x'], data['y'], data['z'], data['m']
     >>> time = data['time']
+
+    TODO:
+    --------
+    - Return time of simulation
     """
     
     # Define all available fields and their column indices
@@ -52,7 +56,7 @@ def load_snap(filename, fields=None):
     # Load the data
     data = np.genfromtxt(filename, usecols=cols, unpack=True)
     
-    # Extract timestamp TODO actually return it too
+    # Extract time
     time = None
     with open(filename, "r") as f:
         for line in f:
@@ -73,7 +77,7 @@ def load_snap(filename, fields=None):
 
 def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
     """
-    Reordering of all quantities extracted from the ascii
+    Takes highest density particle as center and reorders all quantities extracted from the ascii
     files, sorting from lower to higher radius.
     
     Parameters
@@ -87,9 +91,6 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
         - u : numpy.ndarray - Specific internal energy 
         - rho : numpy.ndarray - Density of the particles
         - mu, h, u_dot, temp : numpy.ndarray - Any other fields
-        ## TODO: Implement flag 'trace_stars' that shows which particles originally belonged to which star, if set true then
-                 need particle npart_1 number of star 1 as additional input
-  
     Returns
     -------
     dict
@@ -106,7 +107,7 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
     >>> reordered = re_order(**data)
     >>> 
     >>> # Or load all fields and reorder everything
-    >>> reordered = re_order(**load_snap('snap.txt'))
+    >>> reordered = re_order(**load_snap('snap.ascii'))
     """
         
     max_d = np.argmax(kwargs['rho'])
@@ -137,7 +138,7 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
     
     indx = np.argsort(r) # Get sorting indices
     
-    # Initialize result dictionary with position and radius
+    # Result dictionary with position and radius
     result = {
         'ro_x': nw_x[indx],
         'ro_y': nw_y[indx],
@@ -266,15 +267,8 @@ def bin_and_avg(X, Y, bin_edges):
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
     #valid = (~np.isnan(X)) & (~np.isnan(Y)) & (X != 0)
-    X_valid = X#[valid]
-    Y_valid = Y#[v
 
-    sum_y, _ = np.histogram(X_valid, bins=bin_edges, weights=Y_valid)
-
-    #r_in = bin_edges[:-1]
-    #r_out = bin_edges[1:]
-    #shell_volumes = (4/3) * np.pi * (r_out**3 - r_in**3)
-    #sum_y = sum_y #/ shell_volumes
+    sum_y, _ = np.histogram(X, bins=bin_edges, weights=Y)
 
     counts, _ = np.histogram(X_valid, bins=bin_edges)
     sum_y[counts == 0] = np.nan
@@ -638,9 +632,6 @@ def plot_particles(snap, snap_label, trace_stars=False,xlim=None, ylim=None, fig
     
     return ax
 
-
-####### Experimental! Or just not that useful... ########
-
 def plot_particles_hist2d(snap, snap_label, trace_stars=False, xlim=None, ylim=None, figsize=None,
                    trace_bound=False, color_by_density=False, 
                    ax=None, 
@@ -652,7 +643,7 @@ def plot_particles_hist2d(snap, snap_label, trace_stars=False, xlim=None, ylim=N
                    norm='log'):
     
     '''
-    Simple plotting of particles
+    Plots particles in a 2d histogram
     
     Parameters:
     -----------
@@ -827,7 +818,7 @@ def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=N
         e = energy(snap['ro_v'], snap['ro_u'], snap['ro_r'], M_enc)
         bn, un = bound_unbound(snap['ro_r'], e)
         
-        if onlybound:
+        if onlybound: # Only plots the enclosed bound mass, useful for comparing many snapshots
             ax.plot(snap['ro_r'][bn],np.cumsum(snap['ro_m'][bn]), label=f"{snap_label}, bn", linewidth=2)
             percentage_bn = np.sum(snap['ro_m'][bn])*100/Mt
             percentage_un = np.sum(snap['ro_m'][un])*100/Mt
@@ -864,18 +855,18 @@ def get_vel_comp(snap):
                     data = get_vel_comp(data)
     '''
     
-    # Step A: Calculate total angular momentum
+    # Calculate total angular momentum
     L_x = np.sum(snap['ro_m'] * (snap['ro_y']*snap['ro_vz'] - snap['ro_z']*snap['ro_vy']))
     L_y = np.sum(snap['ro_m'] * (snap['ro_z']*snap['ro_vx'] - snap['ro_x']*snap['ro_vz']))
     L_z = np.sum(snap['ro_m'] * (snap['ro_x']*snap['ro_vy'] - snap['ro_y']*snap['ro_vx']))
     
     L = np.array([L_x, L_y, L_z])
     
-    # Step B: Normalize to get rotation axis unit vector
+    # Normalize to get rotation axis unit vector
     L_mag = np.sqrt(L_x**2 + L_y**2 + L_z**2)
     L_unit = L / L_mag  # Direction of the rotation axis
     
-    # Step C: Calculate velocity components for all particles (vectorized)
+    # Calculate velocity components for all particles
     
     # Stack position and velocity vectors (N x 3 arrays)
     positions = np.column_stack([snap['ro_x'], snap['ro_y'], snap['ro_z']])
@@ -913,7 +904,6 @@ def get_vel_comp(snap):
     return snap
 
 def Munb_plot(filepaths, labels, ax=None, figsize=None):
-    
     
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
