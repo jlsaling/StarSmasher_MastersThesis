@@ -16,6 +16,7 @@ def load_snap(filename, fields=None):
     fields : list of str, optional
         List of field names to load. If None, loads all fields.
         Available fields: 'x', 'y', 'z', 'vx', 'vy', 'vz', 'm', 'rho', 'u', 'mu', 'h', 'u_dot', 'temp'
+        h is the smoothing length in code units!
     
     Returns
     -------
