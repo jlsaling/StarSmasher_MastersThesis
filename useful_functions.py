@@ -270,7 +270,7 @@ def bin_and_avg(X, Y, bin_edges):
 
     sum_y, _ = np.histogram(X, bins=bin_edges, weights=Y)
 
-    counts, _ = np.histogram(X_valid, bins=bin_edges)
+    counts, _ = np.histogram(X, bins=bin_edges)
     sum_y[counts == 0] = np.nan
     
     avg_y = sum_y / counts
@@ -474,11 +474,16 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
     
     # Dictionary for default y-axis labels
     default_labels = {
-        'ro_rho': r"Density [g / $\mathrm{cm}^3$]",
-        'ro_u': r"Specific Internal Energy [erg / g]",
-        'ro_h': r"Specific Enthalpy [erg / g]",
-        'ro_temp': r"Temperature [K]",
-        'ro_udot': r"Specific Internal Energy Change du/dt [erg / (g s)]"
+        'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
+        'ro_u': r"Specific Internal Energy $u$ [erg / g]",
+        'ro_h': r"Specific Enthalpy $h$ [erg / g]",
+        'ro_temp': r"Temperature $T$ [K]",
+        'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
+        'ro_v': r"Velocity $v$ [km / s]",
+        'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
+        'v_radial': r"Radial Velocity $v_r$ [km / s]",
+        'v_vertical': r"Vertical Velocity $v_z$ [km / s]",
+        'R_cylindrical': r'Cylindrical Radius [$\mathrm{R}_\odot$]'
     }
     
     # Create axes if not provided
