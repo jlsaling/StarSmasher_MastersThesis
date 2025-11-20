@@ -163,7 +163,6 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
     
     return result
 
-
 def mass_quantities(m):
     """
     Computation of the total mass and enclosed mass profile.
@@ -284,24 +283,24 @@ def bin_and_avg(X, Y, bin_edges):
 
     return bin_centers, avg_y
 
-def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None, ylim=None, trace_stars=False, 
+def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None, ylim=None, trace_stars=False, 
                        trace_bound=False, mass_binning=False, bin_mass=0.5, log=False, ax=None, snapshot_names=None, 
                        figsize=None, ylabel=None):
     '''
     y_ax_quant: The quantity to be plotted as radial profile, e.g. 'ro_rho' for density
     snapshots: array of re-centered and re-ordered snapshot data, e.g. [d_0479, d_0480, d_0481, ...]
+    bin_edges: bin edges for radial binning (ignored if mass_binning=True)
     xlim: (upper,lower) 
     ylim: (upper,lower) 
     trace_stars: flag, if true then split the data into particles of star 1 and of star 2
     trace_bound: flag, if true then split data into bound and unbound particles
+    mass_binning: if True, bin by enclosed mass instead of radius
+    bin_mass: mass increment for each bin when mass_binning=True
     log: flag, if true use log scale for y-axis
     ax: matplotlib axes object, if None creates new figure
     snapshot_names: list of names for each snapshot (optional), e.g. ['d_0479', 'd_0480', 'd_0481']
     figsize: tuple (width, height) in inches, e.g. (10, 6)
     ylabel: custom y-axis label (optional, overrides default labels)
-    color_by_mass: if True, color scatter points by particle mass
-    cmap: colormap name for mass coloring (default: 'viridis')
-    show_colorbar: if True and color_by_mass is True, show colorbar
     
     Returns:
         ax: matplotlib axes object
@@ -317,34 +316,42 @@ def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None,
         'ro_v': r"Velocity $v$ [km / s]",
         'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
         'v_radial': r"Radial Velocity $v_r$ [km / s]",
-        'v_vertical': r"Vertical Velocity $v_r$ [km / s]",
+        'v_vertical': r"Vertical Velocity $v_z$ [km / s]",
         'R_cylindrical': r'Cylindrical Radius [$\mathrm{R}_\odot$]'
     }
     
-
     # Create axes if not provided
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
-    
-    # Track scatter objects for colorbar
-    scatter_objects = []
-    
-
     
     for i, snap in enumerate(snapshots):
         # Use provided name or default to enumeration
         snap_label = snapshot_names[i] if snapshot_names else f"snap_{i}"
          
         if mass_binning:
-
-            radius_edges = get_mass_based_edges(snap['ro_r'], snap['ro_m'], bin_mass)
-            bin_edges = radius_edges
+            radius_edges, mass_edges = get_mass_based_edges(snap['ro_r'], snap['ro_m'], bin_mass, return_mass_edges=True)
+            bin_edges_to_use = radius_edges
+            # Calculate mass bin centers for x-axis
+            mass_bin_centers = 0.5 * (mass_edges[:-1] + mass_edges[1:])
+            use_mass_xaxis = True
+        else:
+            bin_edges_to_use = bin_edges
+            use_mass_xaxis = False
             
         if trace_stars:
             # Plot star 1 and star 2 separately
             for star_id, star_name in [(1, "S1"), (2, "S2")]:
                 mask = snap['ro_ids'] == star_id
-                X, Y = bin_and_avg(snap['ro_r'][mask],snap[y_ax_quant][mask], bin_edges)
+                
+                if mass_binning:
+                    # Need to recalculate edges for the masked data
+                    radius_edges_masked, mass_edges_masked = get_mass_based_edges(
+                        snap['ro_r'][mask], snap['ro_m'][mask], bin_mass, return_mass_edges=True)
+                    X_radius, Y = bin_and_avg(snap['ro_r'][mask], snap[y_ax_quant][mask], radius_edges_masked)
+                    mass_bin_centers_masked = 0.5 * (mass_edges_masked[:-1] + mass_edges_masked[1:])
+                    X = mass_bin_centers_masked
+                else:
+                    X, Y = bin_and_avg(snap['ro_r'][mask], snap[y_ax_quant][mask], bin_edges_to_use)
                 
                 ax.plot(X, Y, label=f"{snap_label}, {star_name}", linewidth=2)
         
@@ -355,12 +362,25 @@ def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None,
             bn, un = bound_unbound(snap['ro_r'], e)
             
             for mask, particle_type in [(bn, "bn"), (un, "un")]:
-                X, Y = bin_and_avg(snap['ro_r'][mask],snap[y_ax_quant][mask], bin_edges)
-                ax.plot(X,Y, label=f"{snap_label}, {particle_type}", linewidth=2)
+                if mass_binning:
+                    radius_edges_masked, mass_edges_masked = get_mass_based_edges(
+                        snap['ro_r'][mask], snap['ro_m'][mask], bin_mass, return_mass_edges=True)
+                    X_radius, Y = bin_and_avg(snap['ro_r'][mask], snap[y_ax_quant][mask], radius_edges_masked)
+                    mass_bin_centers_masked = 0.5 * (mass_edges_masked[:-1] + mass_edges_masked[1:])
+                    X = mass_bin_centers_masked
+                else:
+                    X, Y = bin_and_avg(snap['ro_r'][mask], snap[y_ax_quant][mask], bin_edges_to_use)
+                    
+                ax.plot(X, Y, label=f"{snap_label}, {particle_type}", linewidth=2)
         
         else:
-            X, Y = bin_and_avg(snap['ro_r'],snap[y_ax_quant], bin_edges)
-            ax.plot(X, Y, label=snap_label, linewidth=2) #, color='#009E73'
+            if mass_binning:
+                X_radius, Y = bin_and_avg(snap['ro_r'], snap[y_ax_quant], bin_edges_to_use)
+                X = mass_bin_centers
+            else:
+                X, Y = bin_and_avg(snap['ro_r'], snap[y_ax_quant], bin_edges_to_use)
+            
+            ax.plot(X, Y, label=snap_label, linewidth=2)
     
     if xlim:
         ax.set_xlim(xlim)
@@ -369,7 +389,11 @@ def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None,
     if log:
         ax.set_yscale("log")
     
-    ax.set_xlabel(r'Radius [$\mathrm{R}_\odot$]')
+    # Set x-axis label based on binning method
+    if mass_binning:
+        ax.set_xlabel(r'Enclosed Mass [$\mathrm{M}_\odot$]')
+    else:
+        ax.set_xlabel(r'Radius [$\mathrm{R}_\odot$]')
     
     # Set y-axis label: custom > default > generic
     if ylabel:
@@ -382,6 +406,53 @@ def plot_radial_profile_average(y_ax_quant, snapshots,bin_edges=None, xlim=None,
     ax.legend()
     
     return ax
+
+def get_mass_based_edges(r, m, bin_mass=1.0, max_mass=None, return_mass_edges=False):
+    '''
+    Get radius bin edges corresponding to equal enclosed mass bins
+    
+    Parameters:
+    -----------
+    r: radial positions of particles
+    m: masses of particles
+    bin_mass: mass increment for each bin
+    max_mass: maximum enclosed mass (if None, uses total mass)
+    return_mass_edges: if True, also return the mass edges
+    
+    Returns:
+    --------
+    radius_edges: radii corresponding to mass bin edges
+    mass_edges: (optional) the mass bin edges if return_mass_edges=True
+    '''
+    
+    # Sort by radius
+    sort_idx = np.argsort(r)
+    r_sorted = r[sort_idx]
+    m_sorted = m[sort_idx]
+    
+    # Calculate enclosed mass
+    m_enc = np.cumsum(m_sorted)
+    
+    # Define mass bin edges
+    if max_mass is None:
+        max_mass = m_enc[-1]
+    
+    mass_edges = np.arange(0, max_mass + bin_mass, bin_mass)
+    
+    # Find radii corresponding to each mass edge
+    radius_edges = np.zeros(len(mass_edges))
+    
+    for i, mass_edge in enumerate(mass_edges):
+        idx = np.searchsorted(m_enc, mass_edge)
+        if idx >= len(r_sorted):
+            radius_edges[i] = r_sorted[-1]
+        else:
+            radius_edges[i] = r_sorted[idx]
+    
+    if return_mass_edges:
+        return radius_edges, mass_edges
+    else:
+        return radius_edges
 
 def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars=False, 
                        trace_bound=False, log=False, ax=None, snapshot_names=None, 
@@ -491,48 +562,6 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
         cbar.set_label(r'Particle Mass [$\mathrm{M}_\odot$]')
     
     return ax
-
-def get_mass_based_edges(r, m, bin_mass=1.0, max_mass=None):
-    '''
-    Get radius bin edges corresponding to equal enclosed mass bins
-    
-    Parameters:
-    -----------
-    r: radial positions of particles
-    m: masses of particles
-    bin_mass: mass increment for each bin
-    max_mass: maximum enclosed mass (if None, uses total mass)
-    
-    Returns:
-    --------
-    radius_edges: radii corresponding to mass bin edges
-    '''
-    
-    # Sort by radius
-    sort_idx = np.argsort(r)
-    r_sorted = r[sort_idx]
-    m_sorted = m[sort_idx]
-    
-    # Calculate enclosed mass
-    m_enc = np.cumsum(m_sorted)
-    
-    # Define mass bin edges
-    if max_mass is None:
-        max_mass = m_enc[-1]
-    
-    mass_edges = np.arange(0, max_mass + bin_mass, bin_mass)
-    
-    # Find radii corresponding to each mass edge
-    radius_edges = np.zeros(len(mass_edges))
-    
-    for i, mass_edge in enumerate(mass_edges):
-        idx = np.searchsorted(m_enc, mass_edge)
-        if idx >= len(r_sorted):
-            radius_edges[i] = r_sorted[-1]
-        else:
-            radius_edges[i] = r_sorted[idx]
-    
-    return radius_edges
 
 def plot_particles(snap, snap_label, trace_stars=False,xlim=None, ylim=None, figsize=None,trace_bound=False,color_by_density=False, 
                    ax=None, 
@@ -785,7 +814,7 @@ def plot_particles_hist2d(snap, snap_label, trace_stars=False, xlim=None, ylim=N
     
     return ax
 
-def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=None, figsize=None):
+def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=None, figsize=None, onlybound=False):
     
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -797,11 +826,19 @@ def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=N
         Mt, M_enc = mass_quantities(snap['ro_m'])
         e = energy(snap['ro_v'], snap['ro_u'], snap['ro_r'], M_enc)
         bn, un = bound_unbound(snap['ro_r'], e)
-            
-        for mask, particle_type in [(bn, "bn"), (un, "un")]:
-            ax.plot(snap['ro_r'][mask],np.cumsum(snap['ro_m'][mask]), label=f"{snap_label}, {particle_type}", linewidth=2)
-            percentage = np.sum(snap['ro_m'][mask])*100/Mt
-            print(f'Percentage {particle_type} for {snap_label}: {percentage}')
+        
+        if onlybound:
+            ax.plot(snap['ro_r'][bn],np.cumsum(snap['ro_m'][bn]), label=f"{snap_label}, bn", linewidth=2)
+            percentage_bn = np.sum(snap['ro_m'][bn])*100/Mt
+            percentage_un = np.sum(snap['ro_m'][un])*100/Mt
+            print(f'Percentage bn for {snap_label}: {percentage_bn:.4f}')
+            print(f'Percentage un for {snap_label}: {percentage_un:.4f}')
+
+        else:
+            for mask, particle_type in [(bn, "bn"), (un, "un")]:
+                ax.plot(snap['ro_r'][mask],np.cumsum(snap['ro_m'][mask]), label=f"{snap_label}, {particle_type}", linewidth=2)
+                percentage = np.sum(snap['ro_m'][mask])*100/Mt
+                print(f'Percentage {particle_type} for {snap_label}: {percentage:.4f}')
             
             
     if xlim:
@@ -809,7 +846,7 @@ def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=N
     if ylim:
         ax.set_ylim(ylim)
     
-    ax.set_xlabel(r'X [$\mathrm{R}_\odot$]')
+    ax.set_xlabel(r'Radius R [$\mathrm{R}_\odot$]')
     ax.set_ylabel(r'Enclosed Mass [$\mathrm{M}_\odot$]')
     ax.legend()
             
@@ -874,3 +911,21 @@ def get_vel_comp(snap):
     snap['R_cylindrical'] = R_perp
     
     return snap
+
+def Munb_plot(filepaths, labels, ax=None, figsize=None):
+    
+    
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    for i,filename in enumerate(filepaths):
+        
+        label = labels[i]
+    
+        Munb_percent, time = np.genfromtxt(filename, usecols=[0,2], unpack=True)
+        ax.plot(time, Munb_percent, label=f"{label}")
+    
+    ax.set_xlabel(r'Time [Days]')
+    ax.set_ylabel("Unbound mass [%]")
+    ax.legend()
+    return ax
