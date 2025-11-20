@@ -15,9 +15,9 @@ G = 6.67e-8
 
 fields = ['x', 'y', 'z', 'vx','vy','vz','rho', 'm', 'u', 'h','temp', 'u_dot']
 
-snap3 =  r"\\wsl.localhost\Ubuntu-24.04\home\jsaling\HELIX_FILE_TRANSFER\42-MS-42-MS_b3\out5878.sph.ascii"
+snap3 =  r"\\path_to_file.ascii"
 
-d_5878 = re_center_and_order(trace_stars=True, npart_1=89976,**load_snap(snap3, fields))
+d_5878 = re_center_and_order(trace_stars=True, npart_1=89976,**load_snap(snap3, fields)) # npart_1, so the number of particles of star 1, can be found in log0.sph
 
 ######################## Plot a temperature profile #############################
 
@@ -53,3 +53,4 @@ ax = plot_radial_profile_average('ro_temp',snaps,
                           snapshot_names=snap_labels)
 
 ax.set_title(r"Star 1: 42 $\mathrm{M}_\odot$, Star 2: 42 $\mathrm{M}_\odot$, b = 3")
+
