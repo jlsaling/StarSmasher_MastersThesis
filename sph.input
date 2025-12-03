@@ -1,0 +1,13 @@
+&input
+    tf=2000,          ! desired final time to stop simulation; use negative values if want code to change tf; number of .out files = tf/dtout
+    dtout=0.5,        ! how often an out*.sph file should be dumped
+    nrelax=0,         ! relaxation flag: 0=dynamical calculation, 1=relaxation of single star, 2=relaxation of binary
+    sep0=109.36,      ! initial separation of two stars in a binary or collision calculation
+    impactparameter=980.15,     ! impact parameter for collisions; actually the periastron separation
+    vinf2=0.0005243,  ! velocity at infinity squared
+    ngravprocs=2,     ! number of gravity processors (<= min(nprocs, ngravprocsmax))
+    computeexclusivemode=0, ! 1 if using GPUs in compute exclusive mode
+    ppn=8,            ! number of CPU cores per node
+    nkernel=0         ! default in the new version is 2 (Wendland C4), 0 is the cubic spline kernel
+&end
+
