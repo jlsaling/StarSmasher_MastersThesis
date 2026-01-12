@@ -16,7 +16,6 @@ def load_snap(filename, fields=None):
     fields : list of str, optional
         List of field names to load. If None, loads all fields.
         Available fields: 'x', 'y', 'z', 'vx', 'vy', 'vz', 'm', 'rho', 'u', 'mu', 'h', 'u_dot', 'temp'
-        h is the smoothing length in code units!
     
     Returns
     -------
@@ -279,7 +278,7 @@ def bin_and_avg(X, Y, bin_edges):
     return bin_centers, avg_y
 
 def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None, ylim=None, trace_stars=False, 
-                       trace_bound=False, mass_binning=False, bin_mass=0.5, log=False, ax=None, snapshot_names=None, 
+                       trace_bound=False, mass_binning=False, bin_mass=0.5, log=False,xlog=False, ax=None, snapshot_names=None, 
                        figsize=None, ylabel=None):
     '''
     y_ax_quant: The quantity to be plotted as radial profile, e.g. 'ro_rho' for density
@@ -383,6 +382,8 @@ def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None
         ax.set_ylim(ylim)
     if log:
         ax.set_yscale("log")
+    if xlog:
+        ax.set_xscale("log")
     
     # Set x-axis label based on binning method
     if mass_binning:
@@ -450,7 +451,7 @@ def get_mass_based_edges(r, m, bin_mass=1.0, max_mass=None, return_mass_edges=Fa
         return radius_edges
 
 def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars=False, 
-                       trace_bound=False, log=False, ax=None, snapshot_names=None, 
+                       trace_bound=False, log=False, xlog=False ,ax=None, snapshot_names=None, 
                        figsize=None, ylabel=None, color_by_mass=False, cmap='viridis', 
                        show_colorbar=True):
     '''
@@ -475,16 +476,11 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
     
     # Dictionary for default y-axis labels
     default_labels = {
-        'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
-        'ro_u': r"Specific Internal Energy $u$ [erg / g]",
-        'ro_h': r"Specific Enthalpy $h$ [erg / g]",
-        'ro_temp': r"Temperature $T$ [K]",
-        'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
-        'ro_v': r"Velocity $v$ [km / s]",
-        'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
-        'v_radial': r"Radial Velocity $v_r$ [km / s]",
-        'v_vertical': r"Vertical Velocity $v_z$ [km / s]",
-        'R_cylindrical': r'Cylindrical Radius [$\mathrm{R}_\odot$]'
+        'ro_rho': r"Density [g / $\mathrm{cm}^3$]",
+        'ro_u': r"Specific Internal Energy [erg / g]",
+        'ro_h': r"Smoothing Length $h$",
+        'ro_temp': r"Temperature [K]",
+        'ro_udot': r"Specific Internal Energy Change du/dt [erg / (g s)]"
     }
     
     # Create axes if not provided
@@ -543,6 +539,8 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
         ax.set_ylim(ylim)
     if log:
         ax.set_yscale("log")
+    if xlog:
+        ax.set_xscale("log")
     
     ax.set_xlabel(r'Radius [$\mathrm{R}_\odot$]')
     
@@ -825,7 +823,7 @@ def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=N
         bn, un = bound_unbound(snap['ro_r'], e)
         
         if onlybound: # Only plots the enclosed bound mass, useful for comparing many snapshots
-            ax.plot(snap['ro_r'][bn],np.cumsum(snap['ro_m'][bn]), label=f"{snap_label}, bn", linewidth=2)
+            ax.plot(snap['ro_r'][bn],np.cumsum(snap['ro_m'][bn]), label=f"{snap_label}, bn", linewidth=2, linestyle="-.",alpha=0.8)
             percentage_bn = np.sum(snap['ro_m'][bn])*100/Mt
             percentage_un = np.sum(snap['ro_m'][un])*100/Mt
             print(f'Percentage bn for {snap_label}: {percentage_bn:.4f}')
@@ -833,7 +831,7 @@ def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=N
 
         else:
             for mask, particle_type in [(bn, "bn"), (un, "un")]:
-                ax.plot(snap['ro_r'][mask],np.cumsum(snap['ro_m'][mask]), label=f"{snap_label}, {particle_type}", linewidth=2)
+                ax.plot(snap['ro_r'][mask],np.cumsum(snap['ro_m'][mask]), label=f"{snap_label}, {particle_type}", linewidth=2, linestyle="-.", alpha=0.8)
                 percentage = np.sum(snap['ro_m'][mask])*100/Mt
                 print(f'Percentage {particle_type} for {snap_label}: {percentage:.4f}')
             
@@ -924,4 +922,118 @@ def Munb_plot(filepaths, labels, ax=None, figsize=None):
     ax.set_xlabel(r'Time [Days]')
     ax.set_ylabel("Unbound mass [%]")
     ax.legend()
+    return ax
+
+def energy_plot(filepaths, labels, option,ax=None, figsize=None):
+
+    '''
+    filepaths: array with strings / filepaths
+    labels: array with strings
+    option: valid are "E_tot", "E_pot", "E_kin", "E_int"
+    '''
+    unit_time = 1.8445e-02
+    
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    for i,filename in enumerate(filepaths):
+        print(filename)
+        label = labels[i]
+        t, E_tot, E_pot, E_kin, E_int = np.genfromtxt(filename,dtype="float",usecols=(0,4,1,2,3),unpack=True)
+        
+        if option=="E_tot":
+            ax.plot(t*unit_time,E_tot/E_tot[0],label=r'$E_\mathrm{tot}$, '+label)
+        elif option=="E_pot":
+            ax.plot(t*unit_time,E_pot/E_pot[0],label=r'$E_\mathrm{pot}$, '+label)
+        elif option=="E_kin":
+            ax.plot(t*unit_time,E_kin/E_kin[0],label=r'$E_\mathrm{kin}$, '+label)
+        elif option=="E_int":
+            ax.plot(t*unit_time,E_int/E_int[0],label=r'$E_\mathrm{int}$, '+label)
+        else:
+            print("Wrong option!")
+        
+    ax.set_yscale('log')
+    ax.set_ylabel(r'$E/E_0$')
+    ax.set_xlabel('Time (days)')
+    ax.legend()
+        
+    return ax
+
+def energy_error(filepaths, labels, ax=None, figsize=None):
+
+    '''
+    filepaths: array with strings / filepaths
+    labels: array with strings
+    '''
+    unit_time = 1.8445e-02
+    
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    for i,filename in enumerate(filepaths):
+        
+        label = labels[i]
+        t, E_tot = np.genfromtxt(filename,dtype="float",usecols=(0,4),unpack=True)
+        
+        ax.plot(t*unit_time, np.abs((E_tot - E_tot[0])/E_tot), label=label)
+        
+    ax.set_yscale('log')
+    ax.set_ylabel('E-E0/E0')
+    ax.set_xlabel('Time (days)')
+    ax.legend()
+        
+    return ax
+        
+def angmom_error(filepaths, labels, ax=None, figsize=None):
+
+    '''
+    filepaths: array with strings / filepaths
+    labels: array with strings
+    '''
+    unit_time = 1.8445e-02
+    
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    for i,filename in enumerate(filepaths):
+        
+        label = labels[i]
+        t, L = np.genfromtxt(filename,dtype="float",usecols=(0,6),unpack=True)
+        
+        ax.plot(t*unit_time, np.abs((L - L[0])/L), label=label)
+        
+    ax.set_yscale('log')
+    ax.set_ylabel(r'$(L-L_0)/L_0$')
+    ax.set_xlabel('Time (days)')
+    ax.legend()
+        
+    return ax
+
+## Test plot of Eorb/Eint vs time
+
+def eorb_eint_ratio_plot(filepaths, labels,ax=None, figsize=None):
+
+    '''
+    filepaths: array with strings / filepaths
+    labels: array with strings
+    option: valid are "E_tot", "E_pot", "E_kin", "E_int"
+    '''
+    unit_time = 1.8445e-02
+    
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    for i,filename in enumerate(filepaths):
+        print(filename)
+        label = labels[i]
+        t, E_tot, E_pot, E_kin, E_int = np.genfromtxt(filename,dtype="float",usecols=(0,4,1,2,3),unpack=True)
+        E_orb = E_pot + E_kin
+        ax.plot(t*unit_time,np.abs(E_int/E_orb),label=r'$E_\mathrm{int} / E_\mathrm{orb}$, '+label)
+  
+        
+    ax.set_yscale('log')
+    ax.set_ylabel(r'$E_\mathrm{int} / E_\mathrm{orb}$')
+    ax.set_xlabel('Time (days)')
+    ax.legend()
+        
     return ax
