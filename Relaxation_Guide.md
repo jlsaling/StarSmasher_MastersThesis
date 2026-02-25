@@ -3,8 +3,8 @@ Before stellar profiles can be used for collisions, stars first have to be impor
 
 #### What the code does (in initialize_parent.f)
 - StSm loads the stellar profile
-- Solves for the necessary temperature profile to give the desired rho and pressure profiles for hydrostatic equilibrium (since StSm uses a different/simplified EOS, hence the temperature profile will never match the stellar one!)
-- Creates second derivatives of  the density. internal energy, and mean molecular weight
+- Solves for the necessary temperature profile to give the desired rho and pressure profiles for hydrostatic equilibrium (since StSm uses a different/simplified EOS, hence the temperature profile in StSm will never match the stellar profile one!)
+- Creates second derivatives of  the density, internal energy, and mean molecular weight
 - Depending on nnopt(!), sets up the initial hcp lattice on which the SPH particles are placed
 - Determines if a core particle is needed (condition?)
 	- Core particles only interact gravitationally with SPH particles and have no temperature / internal energy
