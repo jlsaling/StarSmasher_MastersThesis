@@ -2,6 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from astropy import constants as cons
 from astropy import units
+from cycler import cycler
+import matplotlib.colors as mcolors
+from scipy.stats import binned_statistic_2d
 
 V_sun = 436.5 # km/s 
 
@@ -19,19 +22,19 @@ def load_snap(filename, fields=None):
     
     Returns
     -------
-    dict or array
-        If multiple fields requested: dictionary with field names as keys, arrays as values, and 'time' key
-        If single field requested: just the array for that field (time not included)
+    dict
+        Dictionary with field names as keys and arrays as values.
+        Always includes 'time' key with the snapshot timestamp.
     
     Examples
     --------
     >>> data = load_snap('snap.txt', ['x', 'y', 'z', 'm'])
     >>> x, y, z, m = data['x'], data['y'], data['z'], data['m']
     >>> time = data['time']
-
-    TODO:
-    --------
-    - Return time of simulation
+    
+    >>> data = load_snap('snap.txt', 'x')
+    >>> x = data['x']
+    >>> time = data['time']
     """
     
     # Define all available fields and their column indices
@@ -69,11 +72,14 @@ def load_snap(filename, fields=None):
                 # first non-header line marks end of header
                 break
     
-    # Handle single field case
+    # Always return dictionary with time
     if len(fields) == 1:
-        return data
+        result = {fields[0]: data}
+    else:
+        result = dict(zip(fields, data))
     
-    return dict(zip(fields, data))
+    result['time'] = time
+    return result
 
 def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
     """
@@ -91,6 +97,7 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
         - u : numpy.ndarray - Specific internal energy 
         - rho : numpy.ndarray - Density of the particles
         - mu, h, u_dot, temp : numpy.ndarray - Any other fields
+        - time : float - Simulation time (passed through, not reordered)
     Returns
     -------
     dict
@@ -98,16 +105,17 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
         Always includes:
         - ro_x, ro_y, ro_z : Position reordered by radius
         - ro_r : Radius reordered
+        - time : Simulation time (if present in input)
         Plus 'ro_' versions of all other input fields, and:
         - ro_v : Velocity norm (if vx, vy, vz present)
     
     Examples
     --------
     >>> data = load_snap('snap.txt', ['x', 'y', 'z', 'vx', 'vy', 'vz', 'm', 'u', 'rho'])
-    >>> reordered = re_order(**data)
+    >>> reordered = re_center_and_order(**data)
     >>> 
     >>> # Or load all fields and reorder everything
-    >>> reordered = re_order(**load_snap('snap.ascii'))
+    >>> reordered = re_center_and_order(**load_snap('snap.ascii'))
     """
         
     max_d = np.argmax(kwargs['rho'])
@@ -118,21 +126,17 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
     xcm = x[max_d]
     ycm = y[max_d]
     zcm = z[max_d]
-
     # find velocity of maximum density particle
     vcmx = vx[max_d]
     vcmy = vy[max_d]
     vcmz = vz[max_d]
-
     # re-center
     nw_x = (x-xcm)
     nw_y = (y-ycm)
     nw_z = (z-zcm)
-
     nw_vx = (vx-vcmx)
     nw_vy = (vy-vcmy)
     nw_vz = (vz-vcmz)
-
     r = np.sqrt(nw_x**2 + nw_y**2 + nw_z**2) # radius
     v = np.sqrt(nw_vx**2 + nw_vy**2 + nw_vz**2) # velocity
     
@@ -150,11 +154,15 @@ def re_center_and_order(trace_stars=False, npart_1=None, **kwargs):
         'ro_v': v[indx]*436.5
     }
     
-    # Reorder all other fields
-    skip_fields = {'x', 'y', 'z', 'vx', 'vy', 'vz'}  # Already processed
+    # Reorder all other fields (skip scalars like 'time')
+    skip_fields = {'x', 'y', 'z', 'vx', 'vy', 'vz', 'time'}  # Already processed or scalar
     for key, value in kwargs.items():
         if key not in skip_fields:
             result[f'ro_{key}'] = value[indx]
+    
+    # Pass through time unchanged (if present)
+    if 'time' in kwargs:
+        result['time'] = kwargs['time']
             
     # Trace particles
     if trace_stars == True:
@@ -279,7 +287,7 @@ def bin_and_avg(X, Y, bin_edges):
 
 def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None, ylim=None, trace_stars=False, 
                        trace_bound=False, mass_binning=False, bin_mass=0.5, log=False,xlog=False, ax=None, snapshot_names=None, 
-                       figsize=None, ylabel=None):
+                       figsize=None, ylabel=None, show_time=True, custom_colors=None):
     '''
     y_ax_quant: The quantity to be plotted as radial profile, e.g. 'ro_rho' for density
     snapshots: array of re-centered and re-ordered snapshot data, e.g. [d_0479, d_0480, d_0481, ...]
@@ -304,7 +312,7 @@ def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None
     default_labels = {
         'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
         'ro_u': r"Specific Internal Energy $u$ [erg / g]",
-        'ro_h': r"Specific Enthalpy $h$ [erg / g]",
+        'ro_h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
         'ro_temp': r"Temperature $T$ [K]",
         'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
         'ro_v': r"Velocity $v$ [km / s]",
@@ -318,9 +326,20 @@ def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     
+    if custom_colors:
+        my_cycler = (cycler(color=custom_colors))
+        plt.rc('axes', prop_cycle=my_cycler)
+
     for i, snap in enumerate(snapshots):
         # Use provided name or default to enumeration
-        snap_label = snapshot_names[i] if snapshot_names else f"snap_{i}"
+        if show_time and 'time' in snap:
+            time_str = f"t={snap['time']:.2f} d"
+            if snapshot_names:
+                snap_label = f"{snapshot_names[i]} ({time_str})"
+            else:
+                snap_label = f"snap_{i} ({time_str})"
+        else:
+            snap_label = snapshot_names[i] if snapshot_names else f"snap_{i}"
          
         if mass_binning:
             radius_edges, mass_edges = get_mass_based_edges(snap['ro_r'], snap['ro_m'], bin_mass, return_mass_edges=True)
@@ -453,7 +472,7 @@ def get_mass_based_edges(r, m, bin_mass=1.0, max_mass=None, return_mass_edges=Fa
 def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars=False, 
                        trace_bound=False, log=False, xlog=False ,ax=None, snapshot_names=None, 
                        figsize=None, ylabel=None, color_by_mass=False, cmap='viridis', 
-                       show_colorbar=True):
+                       show_colorbar=True, show_time=True):
     '''
     y_ax_quant: The quantity to be plotted as radial profile, e.g. 'ro_rho' for density
     snapshots: array of re-centered and re-ordered snapshot data, e.g. [d_0479, d_0480, d_0481, ...]
@@ -462,6 +481,7 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
     trace_stars: flag, if true then split the data into particles of star 1 and of star 2
     trace_bound: flag, if true then split data into bound and unbound particles
     log: flag, if true use log scale for y-axis
+    xlog: flag, if true use log scale for x-axis
     ax: matplotlib axes object, if None creates new figure
     snapshot_names: list of names for each snapshot (optional), e.g. ['d_0479', 'd_0480', 'd_0481']
     figsize: tuple (width, height) in inches, e.g. (10, 6)
@@ -469,6 +489,7 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
     color_by_mass: if True, color scatter points by particle mass
     cmap: colormap name for mass coloring (default: 'viridis')
     show_colorbar: if True and color_by_mass is True, show colorbar
+    show_time: if True, display simulation time in legend labels (default: True)
     
     Returns:
         ax: matplotlib axes object
@@ -476,11 +497,16 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
     
     # Dictionary for default y-axis labels
     default_labels = {
-        'ro_rho': r"Density [g / $\mathrm{cm}^3$]",
-        'ro_u': r"Specific Internal Energy [erg / g]",
-        'ro_h': r"Smoothing Length $h$",
-        'ro_temp': r"Temperature [K]",
-        'ro_udot': r"Specific Internal Energy Change du/dt [erg / (g s)]"
+        'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
+        'ro_u': r"Specific Internal Energy $u$ [erg / g]",
+        'ro_h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
+        'ro_temp': r"Temperature $T$ [K]",
+        'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
+        'ro_v': r"Velocity $v$ [km / s]",
+        'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
+        'v_radial': r"Radial Velocity $v_r$ [km / s]",
+        'v_vertical': r"Vertical Velocity $v_z$ [km / s]",
+        'R_cylindrical': r'Cylindrical Radius [$\mathrm{R}_\odot$]'
     }
     
     # Create axes if not provided
@@ -491,8 +517,15 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
     scatter_objects = []
     
     for i, snap in enumerate(snapshots):
-        # Use provided name or default to enumeration
-        snap_label = snapshot_names[i] if snapshot_names else f"snap_{i}"
+        # Build label with optional time
+        if show_time and 'time' in snap:
+            time_str = f"t={snap['time']:.2f} d"
+            if snapshot_names:
+                snap_label = f"{snapshot_names[i]} ({time_str})"
+            else:
+                snap_label = f"snap_{i} ({time_str})"
+        else:
+            snap_label = snapshot_names[i] if snapshot_names else f"snap_{i}"
         
         if trace_stars:
             # Plot star 1 and star 2 separately
@@ -656,8 +689,6 @@ def plot_particles_hist2d(snap, snap_label, trace_stars=False, xlim=None, ylim=N
     color_by_density: if True with histogram, shows column density (sum of densities)
     norm: 'log' or 'linear' for histogram color scaling
     '''
-    import matplotlib.colors as mcolors
-    from scipy.stats import binned_statistic_2d
     
     # Create axes if not provided
     if ax is None:
@@ -822,19 +853,22 @@ def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=N
         e = energy(snap['ro_v'], snap['ro_u'], snap['ro_r'], M_enc)
         bn, un = bound_unbound(snap['ro_r'], e)
         
+        outer_bound_mask = (np.cumsum(snap['ro_m'][bn])/np.sum(snap['ro_m'][bn])) >= 0.99 
+        r_encl = (snap['ro_r'][bn][outer_bound_mask])[0]
+
         if onlybound: # Only plots the enclosed bound mass, useful for comparing many snapshots
             ax.plot(snap['ro_r'][bn],np.cumsum(snap['ro_m'][bn]), label=f"{snap_label}, bn", linewidth=2, linestyle="-.",alpha=0.8)
             percentage_bn = np.sum(snap['ro_m'][bn])*100/Mt
             percentage_un = np.sum(snap['ro_m'][un])*100/Mt
             print(f'Percentage bn for {snap_label}: {percentage_bn:.4f}')
             print(f'Percentage un for {snap_label}: {percentage_un:.4f}')
+            print(f"Radius enclosing 99% of bound mass for {snap_label}: {r_encl:.2f} Rsun")
 
         else:
             for mask, particle_type in [(bn, "bn"), (un, "un")]:
                 ax.plot(snap['ro_r'][mask],np.cumsum(snap['ro_m'][mask]), label=f"{snap_label}, {particle_type}", linewidth=2, linestyle="-.", alpha=0.8)
                 percentage = np.sum(snap['ro_m'][mask])*100/Mt
                 print(f'Percentage {particle_type} for {snap_label}: {percentage:.4f}')
-            
             
     if xlim:
         ax.set_xlim(xlim)
@@ -924,7 +958,7 @@ def Munb_plot(filepaths, labels, ax=None, figsize=None):
     ax.legend()
     return ax
 
-def energy_plot(filepaths, labels, option,ax=None, figsize=None):
+def energy_plot(filepaths, labels, option,ax=None, figsize=None, no_norm=False, log=True):
 
     '''
     filepaths: array with strings / filepaths
@@ -941,19 +975,34 @@ def energy_plot(filepaths, labels, option,ax=None, figsize=None):
         label = labels[i]
         t, E_tot, E_pot, E_kin, E_int = np.genfromtxt(filename,dtype="float",usecols=(0,4,1,2,3),unpack=True)
         
-        if option=="E_tot":
-            ax.plot(t*unit_time,E_tot/E_tot[0],label=r'$E_\mathrm{tot}$, '+label)
-        elif option=="E_pot":
-            ax.plot(t*unit_time,E_pot/E_pot[0],label=r'$E_\mathrm{pot}$, '+label)
-        elif option=="E_kin":
-            ax.plot(t*unit_time,E_kin/E_kin[0],label=r'$E_\mathrm{kin}$, '+label)
-        elif option=="E_int":
-            ax.plot(t*unit_time,E_int/E_int[0],label=r'$E_\mathrm{int}$, '+label)
+        if no_norm:
+            ax.set_ylabel(r'$E$')
+            if option=="E_tot":
+                ax.plot(t*unit_time,E_tot,label=r'$E_\mathrm{tot}$, '+label)
+            elif option=="E_pot":
+                ax.plot(t*unit_time,E_pot,label=r'$E_\mathrm{pot}$, '+label)
+            elif option=="E_kin":
+                ax.plot(t*unit_time,E_kin,label=r'$E_\mathrm{kin}$, '+label)
+            elif option=="E_int":
+                ax.plot(t*unit_time,E_int,label=r'$E_\mathrm{int}$, '+label)
+            else:
+                print("Wrong option!")
+                
         else:
-            print("Wrong option!")
-        
-    ax.set_yscale('log')
-    ax.set_ylabel(r'$E/E_0$')
+            ax.set_ylabel(r'$E/E_0$')
+            if option=="E_tot":
+                ax.plot(t*unit_time,E_tot/E_tot[0],label=r'$E_\mathrm{tot}$, '+label)
+            elif option=="E_pot":
+                ax.plot(t*unit_time,E_pot/E_pot[0],label=r'$E_\mathrm{pot}$, '+label)
+            elif option=="E_kin":
+                ax.plot(t*unit_time,E_kin/E_kin[0],label=r'$E_\mathrm{kin}$, '+label)
+            elif option=="E_int":
+                ax.plot(t*unit_time,E_int/E_int[0],label=r'$E_\mathrm{int}$, '+label)
+            else:
+                print("Wrong option!")
+
+    if log:
+        ax.set_yscale('log')
     ax.set_xlabel('Time (days)')
     ax.legend()
         
@@ -978,7 +1027,7 @@ def energy_error(filepaths, labels, ax=None, figsize=None):
         ax.plot(t*unit_time, np.abs((E_tot - E_tot[0])/E_tot), label=label)
         
     ax.set_yscale('log')
-    ax.set_ylabel('E-E0/E0')
+    ax.set_ylabel(r'$|E-E_0|/E_0$')
     ax.set_xlabel('Time (days)')
     ax.legend()
         
@@ -1036,4 +1085,91 @@ def eorb_eint_ratio_plot(filepaths, labels,ax=None, figsize=None):
     ax.set_xlabel('Time (days)')
     ax.legend()
         
+    return ax
+
+def plot_map_slice(snap, snap_label, color_by = None ,zlim=0.5,xlim=None, ylim=None, figsize=None,
+                   ax=None, 
+                   cmap='viridis', 
+                   show_colorbar=True,
+                   clim=None,
+                   unordered = False):
+    
+    # Create axes if not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    
+    # Track scatter objects for colorbar
+    scatter_objects = []
+    
+    if unordered:
+        
+        default_labels = {
+        'rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
+        'u': r"Specific Internal Energy $u$ [erg / g]",
+        'h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
+        'm': r"Mass m [$\mathrm{M}_\odot$]",
+        'temp': r"Temperature $T$ [K]",
+        'udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
+        'v': r"Velocity $v$ [km / s]"
+        }
+        
+        X = snap['x']
+        Y = snap['y']
+        Z = snap['z']
+        snap['v'] = np.sqrt( (snap['vx'])**2 + (snap['vy'])**2 + (snap['vz'])**2   )*436.5 # for km/s
+        
+    else:
+        
+        default_labels = {
+        'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
+        'ro_u': r"Specific Internal Energy $u$ [erg / g]",
+        'ro_h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
+        'ro_m': r"Mass m [$\mathrm{M}_\odot$]",
+        'ro_temp': r"Temperature $T$ [K]",
+        'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
+        'ro_v': r"Velocity $v$ [km / s]",
+        'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
+        'v_radial': r"Radial Velocity $v_r$ [km / s]",
+        'v_vertical': r"Vertical Velocity $v_z$ [km / s]",
+        'R_cylindrical': r'Cylindrical Radius [$\mathrm{R}_\odot$]'
+        }
+        
+        X = snap['ro_x']
+        Y = snap['ro_y']
+        Z = snap['ro_z']
+        
+    orbital_plane_mask = np.abs(Z) <= zlim
+    
+    if color_by:
+  
+        sc = ax.scatter(X[orbital_plane_mask], Y[orbital_plane_mask], 
+                        c=snap[color_by][orbital_plane_mask], cmap=cmap,
+                        label=snap_label, s=0.5,alpha=0.8)
+        scatter_objects.append(sc)
+    
+    else:
+        
+        sc = ax.scatter(X[orbital_plane_mask],Y[orbital_plane_mask], 
+                        label=snap_label, s=0.5,alpha=0.8)
+        scatter_objects.append(sc)
+        
+    
+    if xlim:
+        ax.set_xlim(xlim)
+    if ylim:
+        ax.set_ylim(ylim)
+    
+    ax.set_xlabel(r'X [$\mathrm{R}_\odot$]')
+    ax.set_ylabel(r'Y [$\mathrm{R}_\odot$]')
+    ax.legend()
+    
+    # Add colorbar if requested and we have scatter objects
+    if color_by and scatter_objects:
+        cbar = plt.colorbar(scatter_objects[-1], ax=ax)
+        cbar.set_label(default_labels[color_by])
+    
+    if clim and scatter_objects:
+        for sc in scatter_objects:
+            sc.set_clim(clim)
+    
     return ax
