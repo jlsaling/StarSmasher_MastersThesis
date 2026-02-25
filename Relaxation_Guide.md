@@ -35,6 +35,7 @@ Also important to consider:
 	- After treloff, the StSm switches to a dynamical calculation, meaning heating from AV is turned on, and the drag force is turned off. It is advisable to set tf such that you can observe the star's behaviour after relaxation to see if everything went well
 - nnopt | Parameter governing the number of neighbors
 	- This is only really important if you choose to use the WC4 kernel
+    - Different nnopt can yield different initial conditions
 	- Need to consider:
 		- Higher nnopt --> larger smoothing lengths & potentially weaker gravity, runs take longer
 		- Too low nnopt --> WC4 kernel is less accurate than cubic spline at low nnopt
