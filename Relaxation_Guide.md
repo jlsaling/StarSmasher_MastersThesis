@@ -13,7 +13,7 @@ Before stellar profiles can be used for collisions, stars first have to be impor
 		- Interpolate with logarithmic values (helps if StSm interpolates to negative values)
 		- Do linear interpolation (instead of using splines)
 		- Use clamping on the spline interpolation (untested)
-- Things can go wrong here, so it can be worthwhile to experiment with the different interpolation schemes
+- Things can go wrong here, so it can be worthwhile to experiment with the different interpolation schemes to obtain different initial conditions.
 	- Example: We had a case with a 58 Msun PARSEC CHeB star which had irregular shell spacing at the transition from core to envelope. This caused problems with the spline interpolation, namely negative densities and / or internal energies. Using log values fixed this.
 
 #### Setting up a relaxation run
