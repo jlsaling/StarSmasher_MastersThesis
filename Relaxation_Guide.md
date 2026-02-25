@@ -22,8 +22,8 @@ The  most important parameters to consider when relaxing a star are
 - n | The total number of particles you want
 	- Depends on the  star and the resolution you need. For example, a CHeB star would need more particles than a MS star because of the large density contrast between core and envelope
 - treloff | Time the simulation switches from relaxation to dynamical run
-	- From my understanding, for t < treloff, heating from artificial viscosity is turned off. This is because the star naturally undergoes contraction or expansion during the relaxation to find its equilibrium radius, and it not desirable to have heat generated from that movement
-	- You probably have to test how long the star needs to relax, but an initial guess can be the dynamical timescale of the star in code units (sqrt(R^3 / M))
+	- From my understanding, for t < treloff, heating from artificial viscosity is turned off. This is because the star naturally undergoes contraction or expansion during the relaxation to find its equilibrium radius, and it is not desirable to have heat generated from that movement
+	- You probably have to test how long the star needs to relax, but it might be a good idea to set it to something larger than the dynamical timescale of the star in code units (sqrt(R^3 / M))
 - trelax | Timescale for the artificial drag force
 	- This is a terrible name for this parameter, but it is very important for properly relaxing stars 
 	- During the relaxation, the star can undergo oscillations that can potentially create shocks and blow up the star. To prevent this, an artificial drag force is introduced, which dampens these oscillations/shocks.
