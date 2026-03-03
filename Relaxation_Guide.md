@@ -22,6 +22,8 @@ The  most important parameters to consider when relaxing a star are
 - n | The total number of particles you want
 	- Depends on the  star and the resolution you need. For example, a CHeB star would need more particles than a MS star because of the large density contrast between core and envelope
    	- In the past, we chose ~100000 particles for MS stars, ~900000 particles for a CHeB stars / RGs (nmax is currently 900000, so you have to choose a value slightly below that, otherwise StSm will complain!)
+   	- If you want to increase nmax, go into parallel_bleeding_edge/src/starsmasher.h and edit the line at the top where nmax is set.
+   	- CAUTION: If you set nmax too high, StarSmasher might not compile. To fix this, go to parallel_bleeding_edge/src/Makefile and add "-mcmodel=medium" to FFLAGS = $(OLEVEL).
 - treloff | Time the simulation switches from relaxation to dynamical run
 	- From my understanding, for t < treloff, heating from artificial viscosity is turned off. This is because the star naturally undergoes contraction or expansion during the relaxation to find its equilibrium radius, and it is not desirable to have heat generated from that movement
 	- You probably have to test how long the star needs to relax, but it might be a good idea to set it to something larger than the dynamical timescale of the star in code units (sqrt(R^3 / M))
