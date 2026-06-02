@@ -3,7 +3,39 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 import matplotlib.colors as mcolors
 from scipy.stats import binned_statistic_2d
-from physics import mass_quantities, energy, bound_unbound, get_mass_based_edges
+from physics import mass_quantities, energy, bound_unbound, get_mass_based_edges, bin_and_avg
+
+DEFAULT_LABELS = {
+    'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
+    'ro_u': r"Specific Internal Energy $u$ [erg / g]",
+    'ro_h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
+    'ro_temp': r"Temperature $T$ [K]",
+    'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
+    'ro_v': r"Velocity $v$ [km / s]",
+    'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
+    'v_radial': r"Radial Velocity $v_r$ [km / s]",
+    'v_vertical': r"Vertical Velocity $v_z$ [km / s]",
+    'R_cylindrical': r"Cylindrical Radius [$\mathrm{R}_\odot$]"
+}
+
+DEFAULT_LABELS_UNORDERED = {
+    'rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
+    'u': r"Specific Internal Energy $u$ [erg / g]",
+    'h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
+    'm': r"Mass m [$\mathrm{M}_\odot$]",
+    'temp': r"Temperature $T$ [K]",
+    'udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
+    'v': r"Velocity $v$ [km / s]"
+}
+
+
+def format_snapshot_label(snap, i, snapshot_names=None, show_time=True):
+    if show_time and 'time' in snap:
+        time_str = f"t={snap['time']:.2f} d"
+        if snapshot_names:
+            return f"{snapshot_names[i]} ({time_str})"
+        return f"snap_{i} ({time_str})"
+    return snapshot_names[i] if snapshot_names else f"snap_{i}"
 
 
 def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None, ylim=None, trace_stars=False, 
@@ -29,20 +61,6 @@ def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None
         ax: matplotlib axes object
     '''
     
-    # Dictionary for default y-axis labels
-    default_labels = {
-        'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
-        'ro_u': r"Specific Internal Energy $u$ [erg / g]",
-        'ro_h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
-        'ro_temp': r"Temperature $T$ [K]",
-        'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
-        'ro_v': r"Velocity $v$ [km / s]",
-        'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
-        'v_radial': r"Radial Velocity $v_r$ [km / s]",
-        'v_vertical': r"Vertical Velocity $v_z$ [km / s]",
-        'R_cylindrical': r'Cylindrical Radius [$\mathrm{R}_\odot$]'
-    }
-    
     # Create axes if not provided
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -52,25 +70,14 @@ def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None
         plt.rc('axes', prop_cycle=my_cycler)
 
     for i, snap in enumerate(snapshots):
-        # Use provided name or default to enumeration
-        if show_time and 'time' in snap:
-            time_str = f"t={snap['time']:.2f} d"
-            if snapshot_names:
-                snap_label = f"{snapshot_names[i]} ({time_str})"
-            else:
-                snap_label = f"snap_{i} ({time_str})"
-        else:
-            snap_label = snapshot_names[i] if snapshot_names else f"snap_{i}"
+        snap_label = format_snapshot_label(snap, i, snapshot_names, show_time)
          
         if mass_binning:
             radius_edges, mass_edges = get_mass_based_edges(snap['ro_r'], snap['ro_m'], bin_mass, return_mass_edges=True)
             bin_edges_to_use = radius_edges
-            # Calculate mass bin centers for x-axis
             mass_bin_centers = 0.5 * (mass_edges[:-1] + mass_edges[1:])
-            use_mass_xaxis = True
         else:
             bin_edges_to_use = bin_edges
-            use_mass_xaxis = False
             
         if trace_stars:
             # Plot star 1 and star 2 separately
@@ -81,7 +88,7 @@ def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None
                     # Need to recalculate edges for the masked data
                     radius_edges_masked, mass_edges_masked = get_mass_based_edges(
                         snap['ro_r'][mask], snap['ro_m'][mask], bin_mass, return_mass_edges=True)
-                    X_radius, Y = bin_and_avg(snap['ro_r'][mask], snap[y_ax_quant][mask], radius_edges_masked)
+                    _, Y = bin_and_avg(snap['ro_r'][mask], snap[y_ax_quant][mask], radius_edges_masked)
                     mass_bin_centers_masked = 0.5 * (mass_edges_masked[:-1] + mass_edges_masked[1:])
                     X = mass_bin_centers_masked
                 else:
@@ -99,7 +106,7 @@ def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None
                 if mass_binning:
                     radius_edges_masked, mass_edges_masked = get_mass_based_edges(
                         snap['ro_r'][mask], snap['ro_m'][mask], bin_mass, return_mass_edges=True)
-                    X_radius, Y = bin_and_avg(snap['ro_r'][mask], snap[y_ax_quant][mask], radius_edges_masked)
+                    _, Y = bin_and_avg(snap['ro_r'][mask], snap[y_ax_quant][mask], radius_edges_masked)
                     mass_bin_centers_masked = 0.5 * (mass_edges_masked[:-1] + mass_edges_masked[1:])
                     X = mass_bin_centers_masked
                 else:
@@ -109,7 +116,7 @@ def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None
         
         else:
             if mass_binning:
-                X_radius, Y = bin_and_avg(snap['ro_r'], snap[y_ax_quant], bin_edges_to_use)
+                _, Y = bin_and_avg(snap['ro_r'], snap[y_ax_quant], bin_edges_to_use)
                 X = mass_bin_centers
             else:
                 X, Y = bin_and_avg(snap['ro_r'], snap[y_ax_quant], bin_edges_to_use)
@@ -134,8 +141,8 @@ def plot_radial_profile_average(y_ax_quant, snapshots, bin_edges=None, xlim=None
     # Set y-axis label: custom > default > generic
     if ylabel:
         ax.set_ylabel(ylabel)
-    elif y_ax_quant in default_labels:
-        ax.set_ylabel(default_labels[y_ax_quant])
+    elif y_ax_quant in DEFAULT_LABELS:
+        ax.set_ylabel(DEFAULT_LABELS[y_ax_quant])
     else:
         ax.set_ylabel(y_ax_quant)  # Fallback to the variable name
     
@@ -169,20 +176,6 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
         ax: matplotlib axes object
     '''
     
-    # Dictionary for default y-axis labels
-    default_labels = {
-        'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
-        'ro_u': r"Specific Internal Energy $u$ [erg / g]",
-        'ro_h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
-        'ro_temp': r"Temperature $T$ [K]",
-        'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
-        'ro_v': r"Velocity $v$ [km / s]",
-        'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
-        'v_radial': r"Radial Velocity $v_r$ [km / s]",
-        'v_vertical': r"Vertical Velocity $v_z$ [km / s]",
-        'R_cylindrical': r'Cylindrical Radius [$\mathrm{R}_\odot$]'
-    }
-    
     # Create axes if not provided
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -191,15 +184,7 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
     scatter_objects = []
     
     for i, snap in enumerate(snapshots):
-        # Build label with optional time
-        if show_time and 'time' in snap:
-            time_str = f"t={snap['time']:.2f} d"
-            if snapshot_names:
-                snap_label = f"{snapshot_names[i]} ({time_str})"
-            else:
-                snap_label = f"snap_{i} ({time_str})"
-        else:
-            snap_label = snapshot_names[i] if snapshot_names else f"snap_{i}"
+        snap_label = format_snapshot_label(snap, i, snapshot_names, show_time)
         
         if trace_stars:
             # Plot star 1 and star 2 separately
@@ -254,8 +239,8 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
     # Set y-axis label: custom > default > generic
     if ylabel:
         ax.set_ylabel(ylabel)
-    elif y_ax_quant in default_labels:
-        ax.set_ylabel(default_labels[y_ax_quant])
+    elif y_ax_quant in DEFAULT_LABELS:
+        ax.set_ylabel(DEFAULT_LABELS[y_ax_quant])
     else:
         ax.set_ylabel(y_ax_quant)  # Fallback to the variable name
     
@@ -268,11 +253,12 @@ def plot_radial_profile(y_ax_quant, snapshots, xlim=None, ylim=None, trace_stars
     
     return ax
 
-def plot_particles(snap, snap_label, trace_stars=False,xlim=None, ylim=None, figsize=None,trace_bound=False,color_by_density=False, 
+def plot_particles(snap, snap_label, trace_stars=False, xlim=None, ylim=None, figsize=None, trace_bound=False, color_by_density=False, 
                    ax=None, 
                    cmap='viridis', 
                    show_colorbar=True,
-                   clim=None):
+                   clim=None,
+                   show_time=True):
     
     '''
     Simple plotting of particles
@@ -281,6 +267,9 @@ def plot_particles(snap, snap_label, trace_stars=False,xlim=None, ylim=None, fig
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     
+    if show_time and 'time' in snap:
+        snap_label = f"{snap_label} (t={snap['time']:.2f} d)"
+
     # Track scatter objects for colorbar
     scatter_objects = []
         
@@ -351,7 +340,8 @@ def plot_particles_hist2d(snap, snap_label, trace_stars=False, xlim=None, ylim=N
                    clim=None,
                    bins=100,
                    use_histogram=True,
-                   norm='log'):
+                   norm='log',
+                   show_time=True):
     
     '''
     Plots particles in a 2d histogram
@@ -368,6 +358,9 @@ def plot_particles_hist2d(snap, snap_label, trace_stars=False, xlim=None, ylim=N
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     
+    if show_time and 'time' in snap:
+        snap_label = f"{snap_label} (t={snap['time']:.2f} d)"
+
     # Track image/scatter objects for colorbar
     plot_objects = []
     
@@ -520,8 +513,7 @@ def bound_unbound_plot(snapshots, snapshot_names=None, ax=None,xlim=None, ylim=N
         fig, ax = plt.subplots(figsize=figsize)
     
     for i, snap in enumerate(snapshots):
-        # Use provided name or default to enumeration
-        snap_label = snapshot_names[i] if snapshot_names else f"snap_{i}"
+        snap_label = format_snapshot_label(snap, i, snapshot_names)
         
         Mt, M_enc = mass_quantities(snap['ro_m'])
         
@@ -724,58 +716,38 @@ def plot_map_slice(snap, snap_label, color_by = None ,zlim=0.5,xlim=None, ylim=N
                    cmap='viridis', 
                    show_colorbar=True,
                    clim=None,
-                   unordered = False):
+                   unordered = False,
+                   show_time=True):
     
     # Create axes if not provided
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     
+    if show_time and 'time' in snap:
+        snap_label = f"{snap_label} (t={snap['time']:.2f} d)"
+
     # Track scatter objects for colorbar
     scatter_objects = []
     
     if unordered:
-        
-        default_labels = {
-        'rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
-        'u': r"Specific Internal Energy $u$ [erg / g]",
-        'h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
-        'm': r"Mass m [$\mathrm{M}_\odot$]",
-        'temp': r"Temperature $T$ [K]",
-        'udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
-        'v': r"Velocity $v$ [km / s]"
-        }
-        
+        default_labels = DEFAULT_LABELS_UNORDERED
         X = snap['x']
         Y = snap['y']
         Z = snap['z']
-        snap['v'] = np.sqrt( (snap['vx'])**2 + (snap['vy'])**2 + (snap['vz'])**2   )*436.5 # for km/s
-        
+        values = np.sqrt(snap['vx']**2 + snap['vy']**2 + snap['vz']**2) * 436.5 if color_by == 'v' else snap[color_by] if color_by else None
     else:
-        
-        default_labels = {
-        'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
-        'ro_u': r"Specific Internal Energy $u$ [erg / g]",
-        'ro_h': r"Smoothing Length h [$\mathrm{R}_\odot$]",
-        'ro_m': r"Mass m [$\mathrm{M}_\odot$]",
-        'ro_temp': r"Temperature $T$ [K]",
-        'ro_udot': r"Specific Internal Energy Change $du/dt$ [erg / (g s)]",
-        'ro_v': r"Velocity $v$ [km / s]",
-        'v_azimuthal': r"Azimuthal Velocity $v_\theta$ [km / s]",
-        'v_radial': r"Radial Velocity $v_r$ [km / s]",
-        'v_vertical': r"Vertical Velocity $v_z$ [km / s]",
-        'R_cylindrical': r'Cylindrical Radius [$\mathrm{R}_\odot$]'
-        }
-        
+        default_labels = DEFAULT_LABELS
         X = snap['ro_x']
         Y = snap['ro_y']
         Z = snap['ro_z']
+        values = snap[color_by] if color_by else None
         
     orbital_plane_mask = np.abs(Z) <= zlim
     
     if color_by:
   
         sc = ax.scatter(X[orbital_plane_mask], Y[orbital_plane_mask], 
-                        c=snap[color_by][orbital_plane_mask], cmap=cmap,
+                        c=values[orbital_plane_mask], cmap=cmap,
                         label=snap_label, s=0.5,alpha=0.8)
         scatter_objects.append(sc)
     
