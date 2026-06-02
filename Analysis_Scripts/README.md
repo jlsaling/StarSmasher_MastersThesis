@@ -1,6 +1,6 @@
 # Analysis_Scripts
 
-This package contains helper modules for working with stellar collision analysis data.
+This package contains helper modules for working with StarSmasher data.
 
 ## Overview
 
