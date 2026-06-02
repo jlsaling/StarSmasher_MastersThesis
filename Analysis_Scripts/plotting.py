@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from cycler import cycler
 import matplotlib.colors as mcolors
 from scipy.stats import binned_statistic_2d
-from physics import mass_quantities, energy, bound_unbound, get_mass_based_edges, bin_and_avg
+from .physics import mass_quantities, energy, bound_unbound, get_mass_based_edges, bin_and_avg
 
 DEFAULT_LABELS = {
     'ro_rho': r"Density $\rho$ [g / $\mathrm{cm}^3$]",
@@ -569,93 +569,99 @@ def Munb_plot(filepaths, labels, ax=None, figsize=None):
     ax.legend()
     return ax
 
-def energy_plot(filepaths, labels, option,ax=None, figsize=None, no_norm=False, log=True):
+def _plot_time_series(filepaths, labels, usecols, y_func, ylabel, ax=None, figsize=None, log=True, label_fmt=None):
+    unit_time = 1.8445e-02
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+
+    for filename, label in zip(filepaths, labels):
+        data = np.genfromtxt(filename, dtype="float", usecols=usecols, unpack=True)
+        y = y_func(data)
+        if y is None:
+            continue
+
+        t = data[0] * unit_time
+        plot_label = label_fmt(data, label) if label_fmt is not None else label
+        ax.plot(t, y, label=plot_label)
+
+    if log:
+        ax.set_yscale('log')
+
+    ax.set_xlabel('Time (days)')
+    ax.set_ylabel(ylabel)
+    ax.legend()
+    return ax
+
+
+def energy_plot(filepaths, labels, option, ax=None, figsize=None, no_norm=False, log=True):
 
     '''
     filepaths: array with strings / filepaths
     labels: array with strings
-    option: valid are "E_tot", "E_pot", "E_kin", "E_int"
+    option: valid are "E_tot", "E_pot", "E_kin", "E_int", "L"
     '''
-    unit_time = 1.8445e-02
-    
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
+    option_map = {
+        "E_tot": (1, r'$E_\mathrm{tot}$'),
+        "E_pot": (2, r'$E_\mathrm{pot}$'),
+        "E_kin": (3, r'$E_\mathrm{kin}$'),
+        "E_int": (4, r'$E_\mathrm{int}$'),
+        "L": (5, r'$L$'),
+    }
 
-    for i,filename in enumerate(filepaths):
-        print(filename)
-        label = labels[i]
-        t, E_tot, E_pot, E_kin, E_int, L = np.genfromtxt(filename,dtype="float",usecols=(0,4,1,2,3,6),unpack=True)
-        
-        if no_norm:
-            ax.set_ylabel(r'$E$')
-            if option=="E_tot":
-                ax.plot(t*unit_time,E_tot,label=r'$E_\mathrm{tot}$, '+label)
-            elif option=="E_pot":
-                ax.plot(t*unit_time,E_pot,label=r'$E_\mathrm{pot}$, '+label)
-            elif option=="E_kin":
-                ax.plot(t*unit_time,E_kin,label=r'$E_\mathrm{kin}$, '+label)
-            elif option=="E_int":
-                ax.plot(t*unit_time,E_int,label=r'$E_\mathrm{int}$, '+label)
-            elif option=="L":
-                ax.plot(t*unit_time,L,label=r'$L$, '+label)
-                ax.set_ylabel(r'$L$')
-            else:
-                print("Wrong option!")
-                
-        else:
-            ax.set_ylabel(r'$E/E_0$')
-            if option=="E_tot":
-                ax.plot(t*unit_time,E_tot/E_tot[0],label=r'$E_\mathrm{tot}$, '+label)
-            elif option=="E_pot":
-                ax.plot(t*unit_time,E_pot/E_pot[0],label=r'$E_\mathrm{pot}$, '+label)
-            elif option=="E_kin":
-                ax.plot(t*unit_time,E_kin/E_kin[0],label=r'$E_\mathrm{kin}$, '+label)
-            elif option=="E_int":
-                ax.plot(t*unit_time,E_int/E_int[0],label=r'$E_\mathrm{int}$, '+label)
-            elif option=="L":
-                ax.plot(t*unit_time,L/L[0],label=r'$L$, '+label)
-                ax.set_ylabel(r'$L/L_0$')
-            else:
-                print("Wrong option!")
+    if option not in option_map:
+        raise ValueError(f"option must be one of {sorted(option_map)}")
 
-    if log:
-        ax.set_yscale('log')
-    ax.set_xlabel('Time (days)')
-    ax.legend()
-        
-    return ax
+    usecols = (0, 4, 1, 2, 3, 6)
+    label_tex = option_map[option][1]
+
+    if no_norm:
+        ylabel = r'$L$' if option == 'L' else r'$E$'
+
+        def y_func(data):
+            return data[option_map[option][0]]
+    else:
+        ylabel = r'$L/L_0$' if option == 'L' else r'$E/E_0$'
+
+        def y_func(data):
+            series = data[option_map[option][0]]
+            return series / series[0]
+
+    return _plot_time_series(
+        filepaths,
+        labels,
+        usecols,
+        y_func,
+        ylabel,
+        ax=ax,
+        figsize=figsize,
+        log=log,
+        label_fmt=lambda data, label: f"{label_tex}, {label}",
+    )
 
 def energy_error(filepaths, labels, ax=None, figsize=None):
     '''
     filepaths: array with strings / filepaths
     labels: array with strings
     '''
-    unit_time = 1.8445e-02
-    
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-    
-    for i, filename in enumerate(filepaths):
-        label = labels[i]
-        t, E_tot = np.genfromtxt(filename, dtype="float", usecols=(0, 4), unpack=True)
-        
-        # Find first non-NaN value
-        E_0_idx = np.where(~np.isnan(E_tot))[0]
-        
-        if len(E_0_idx) == 0:
-            print(f"Warning: All values are NaN in {filename}, skipping...")
-            continue
-        
-        E_0 = E_tot[E_0_idx[0]]
-        
-        ax.plot(t * unit_time, np.abs((E_tot - E_0) / E_0), label=label)
-        
-    ax.set_yscale('log')
-    ax.set_ylabel(r'$|E-E_0|/E_0$')
-    ax.set_xlabel('Time (days)')
-    ax.legend()
-        
-    return ax
+    def y_func(data):
+        E_tot = data[1]
+        valid_idx = np.where(~np.isnan(E_tot))[0]
+        if len(valid_idx) == 0:
+            return None
+        E0 = E_tot[valid_idx[0]]
+        return np.abs((E_tot - E0) / E0)
+
+    return _plot_time_series(
+        filepaths,
+        labels,
+        usecols=(0, 4),
+        y_func=y_func,
+        ylabel=r'$|E-E_0|/E_0$',
+        ax=ax,
+        figsize=figsize,
+        log=True,
+    )
         
 def angmom_error(filepaths, labels, ax=None, figsize=None):
 
@@ -663,53 +669,47 @@ def angmom_error(filepaths, labels, ax=None, figsize=None):
     filepaths: array with strings / filepaths
     labels: array with strings
     '''
-    unit_time = 1.8445e-02
-    
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
+    def y_func(data):
+        L = data[1]
+        return np.abs((L - L[0]) / L[0])
 
-    for i,filename in enumerate(filepaths):
-        
-        label = labels[i]
-        t, L = np.genfromtxt(filename,dtype="float",usecols=(0,6),unpack=True)
-        
-        ax.plot(t*unit_time, np.abs((L - L[0])/L[0]), label=label)
-        
-    ax.set_yscale('log')
-    ax.set_ylabel(r'$|(L-L_0)/L_0|$')
-    ax.set_xlabel('Time (days)')
-    ax.legend()
-        
-    return ax
+    return _plot_time_series(
+        filepaths,
+        labels,
+        usecols=(0, 6),
+        y_func=y_func,
+        ylabel=r'$|(L-L_0)/L_0|$',
+        ax=ax,
+        figsize=figsize,
+        log=True,
+    )
 
 ## Test plot of Eorb/Eint vs time
 
-def eorb_eint_ratio_plot(filepaths, labels,ax=None, figsize=None):
+def eorb_eint_ratio_plot(filepaths, labels, ax=None, figsize=None):
 
     '''
     filepaths: array with strings / filepaths
     labels: array with strings
-    option: valid are "E_tot", "E_pot", "E_kin", "E_int"
     '''
-    unit_time = 1.8445e-02
-    
-    if ax is None:
-        fig, ax = plt.subplots(figsize=figsize)
-
-    for i,filename in enumerate(filepaths):
-        print(filename)
-        label = labels[i]
-        t, E_tot, E_pot, E_kin, E_int = np.genfromtxt(filename,dtype="float",usecols=(0,4,1,2,3),unpack=True)
+    def y_func(data):
+        E_pot = data[2]
+        E_kin = data[3]
+        E_int = data[4]
         E_orb = E_pot + E_kin
-        ax.plot(t*unit_time,np.abs(E_int/E_orb),label=r'$E_\mathrm{int} / E_\mathrm{orb}$, '+label)
-  
-        
-    ax.set_yscale('log')
-    ax.set_ylabel(r'$E_\mathrm{int} / E_\mathrm{orb}$')
-    ax.set_xlabel('Time (days)')
-    ax.legend()
-        
-    return ax
+        return np.abs(E_int / E_orb)
+
+    return _plot_time_series(
+        filepaths,
+        labels,
+        usecols=(0, 4, 1, 2, 3),
+        y_func=y_func,
+        ylabel=r'$E_\mathrm{int} / E_\mathrm{orb}$',
+        ax=ax,
+        figsize=figsize,
+        log=True,
+        label_fmt=lambda data, label: r'$E_\mathrm{int} / E_\mathrm{orb}$, ' + label,
+    )
 
 def plot_map_slice(snap, snap_label, color_by = None ,zlim=0.5,xlim=None, ylim=None, figsize=None,
                    ax=None, 
