@@ -48,25 +48,8 @@ from Analysis_Scripts import plotting, io, recenter
 ## Example workflow
 
 ```python
-from Analysis_Scripts.io import load_snap
-from Analysis_Scripts.recenter import re_center_and_order
-from Analysis_Scripts.plotting import plot_radial_profile
-
-# Load a snapshot
-data = load_snap('snap.txt', ['x', 'y', 'z', 'vx', 'vy', 'vz', 'm', 'u', 'rho'])
-
-# Recenter and order the snapshot
-snap = re_center_and_order(**data)
-
-# Plot a radial profile
-plot_radial_profile('ro_rho', [snap])
+TODO
 ```
-
-## Notes
-
-- `__init__.py` exposes the core helpers for convenient package import.
-- Each module imports only the dependencies it needs.
-- If you use the code from another location, ensure the parent folder is on Python's import path.
 
 ## Module details
 
