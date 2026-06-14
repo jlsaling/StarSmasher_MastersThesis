@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/jlsaling/StarSmasher_MastersThesis/logo.png?raw=true" alt="TACOS logo"/>
+  <img src="https://github.com/jlsaling/StarSmasher_MastersThesis/logo.jpeg?raw=true" alt="TACOS logo"/>
 </p>
 
 # StarSmasher_MastersThesis // TACOS
